@@ -11,3 +11,5 @@ To bring out the serial UART to the rest of your system the simplest method is t
 To add support for the QRE1113 sensor you need to solder a wires to A3, 5V, and GND.
 
 Optionally you can bring out i2c by soldering wires to A4 and A5.
+
+You need to copy leia.avi, plans1.avi, plans2.avi, r2.gd2, and Splash.jpg from the Assets directory into the root directory of the SD card. The SD card cannot be bigger than 16GB (I'm using 8GB cards).
