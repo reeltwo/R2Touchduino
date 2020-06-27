@@ -1500,6 +1500,7 @@ public:
     {
         int res;
 
+    #ifdef CARD_SENSOR
         if (fSensorTriggered)
         {
             blankScreen();
@@ -1512,6 +1513,7 @@ public:
             sendMarcduinoCommand(CARD_STOPPANEL_COMMAND);
             restoreScreen();
         }
+    #endif
 
         GD.cmd_mediafifo(fBase, fSize);
         GD.cmd_regwrite(REG_MEDIAFIFO_WRITE, fPtr);
@@ -1532,17 +1534,21 @@ public:
         if (res <= 0)
         {
             // video is over
+        #ifdef CARD_SENSOR
             if (fSensorTriggered)
             {
                 sendMarcduinoCommand(CARD_CLOSEPANEL_COMMAND);
                 delay(CARD_CLOSEPANEL_DELAY_MS);
                 sendMarcduinoCommand(CARD_STOPMUSIC_COMMAND);
             }
+        #endif
             switchToScreen(kMainScreen);
+        #ifdef CARD_SENSOR
             if (fSensorTriggered)
             {
                 blankScreen();
             }
+        #endif
         }
     }
 
