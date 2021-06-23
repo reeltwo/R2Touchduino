@@ -2,13 +2,23 @@
 #include <GD2.h>
 #include <Wire.h>
 
+// Specify SD chip select pins here that are not specified in GD2.h
+#ifdef ESP32
+#define USE_SD_PIN 15
+#define USE_DEFAULT_CS 5
+#else
+#define USE_SD_PIN SD_PIN
+#define USE_DEFAULT_CS DEFAULT_CS
+#endif
+#define GD_INIT() GD.begin((GD_CALIBRATE | GD_TRIM | GD_STORAGE), USE_DEFAULT_CS, USE_SD_PIN)
+
 const typedef struct MenuItem_t {
     char label[10];
 } MenuItem;
 
 const typedef struct MarcduinoCommand_t {
-    char label[16];
-    char cmd[10];
+    char label[15];
+    char cmd[9];
 } MarcduinoCommand;
 
 #ifndef SizeOfArray
@@ -114,14 +124,45 @@ void SendMarcduinoCommand(const char* cmd)
     else
 #endif
     {
+#ifdef ESP32
+        Serial.print(cmd);
+        Serial.flush();
+        strcat(client_command, cmd);
+        strcat(client_command, "\r");
+        client.write(client_command, strlen(client_command));
+        client_command[0] = '\0';
+#endif
+#ifdef MARCDUINO_SERIAL
         MARCDUINO_SERIAL.print(cmd);
         MARCDUINO_SERIAL.flush();
+#endif
+#ifdef XBEE_SOFT_SERIAL
+        XBee.print(cmd);
+        XBee.flush();
+#endif
     }
 }
 
-void SendPartialMarcduinoCommand(const char* cmd)
+void SendPartialMarcduinoCommand(const char* cmd, const char* param)
 {
+#ifdef ESP32
+    Serial.print(cmd);
+    Serial.print(param);
+    Serial.println();
+    strcat(client_command, cmd);
+    strcat(client_command, param);
+    strcat(client_command, "\r");
+    client.write(client_command, strlen(client_command));
+    client_command[0] = '\0';
+#endif
+#ifdef MARCDUINO_SERIAL
     MARCDUINO_SERIAL.print(cmd);
+    MARCDUINO_SERIAL.print(param);
+#endif
+#ifdef XBEE_SOFT_SERIAL
+    XBee.print(cmd);
+    XBee.print(param);
+#endif
 }
 
 class CommandMenu
@@ -546,8 +587,8 @@ public:
     virtual void render() = 0;
     virtual void sendMarcduinoCommand(const char* cmd)
     {
-        if (*cmd == '@')
-            cmd++;
+//        if (*cmd == '@')
+//            cmd++;
         // Check for empty command and then do nothing
         if (*cmd != '\0')
         {

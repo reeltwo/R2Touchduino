@@ -11,24 +11,31 @@
 
 // Disable if you don't want a splash screen
 #define SPLASH_SCREEN
+#define BLANK_MAIN_SCREEN
 // Enable if you don't want to be able to send i2c commands directly
 //#define MY_I2C_ADDRESS            33
+#if! defined(ESP32)
 // Serial port used for sending Marcduino commands
 #define MARCDUINO_SERIAL            Serial
+// Forward any Marcduino serial command received
+#define MARCDUINO_FORWARD
 // Teeces default baud rate is 2400
-#define BAUD_RATE                   2400
+//#define BAUD_RATE                   2400
 // JEDI devices run at 9600
-//#define BAUD_RATE                 9600
+#define BAUD_RATE                   9600
+#endif
+
+//#define XBEE_SOFT_SERIAL
 
 // QRE1113 sensor reading from A3 (disable if you don't want an optical sensor)
 #define CARD_SENSOR                 3
 
 #ifdef CARD_SENSOR
 // If the value returned by QRE1113 drops below this then trigger event
-#define CARD_SENSOR_THRESHOLD       500
-
+#define CARD_SENSOR_THRESHOLD       970
 // If defined will stop playing the movie if the card is removed
 #define CARD_REMOVED_STOPS_MOVIE    1
+#endif
 
 // #define CARD_MOVIE                  "leia.avi"
 // #define CARD_MOVIE                  "plans1.avi"
@@ -41,9 +48,29 @@
 #define CARD_CLOSEPANEL_COMMAND     ":CL05\r"   // close servo panel 5
 #define CARD_CLOSEPANEL_DELAY_MS    1000
 #define CARD_STOPMUSIC_COMMAND      ":SE10\r"
+
+/////////////////////////////////////////////////////////////////////////
+
+#if defined(ESP32)
+#include <WiFi.h>
+#include <SD.h>
+#define SHARE_SD(X)  do {GD.__end(); (X); GD.resume();} while (0)
+const char* ssid     = "RSeriesNet";       // your network SSID (name of wifi network)
+const char* password = "WeAreAllGonnaDie"; // your network password
+const IPAddress server = IPAddress(192, 168, 8, 15);  // Server IP address
+const int port = 2000;
+const char* pskIdent = "R2Touchduino"; // PSK identity (sometimes called key hint)
+const char* psKey = "1a2b3c4d"; // PSK Key (must be hex string without 0x)
+WiFiClient client;
+char client_command[512];
 #endif
 
 /////////////////////////////////////////////////////////////////////////
+
+#ifdef XBEE_SOFT_SERIAL
+#include <SoftwareSerial.h>
+SoftwareSerial XBee(2, 3);
+#endif
 
 #include "R2UI.h"
 #include "r2-assets.h"
@@ -63,6 +90,7 @@ enum
 };
 
 static MarcduinoCommand PROGMEM sMainCommands[] = {
+#ifndef BLANK_MAIN_SCREEN
     { "Close All",      ":CL00" },
     { "Open All",       ":OP00" },
     { "Smirk Wave",     ":SE03" },
@@ -85,8 +113,10 @@ static MarcduinoCommand PROGMEM sMainCommands[] = {
     { "Scope Search",   "*PS03" },
     { "Scope Fast",     "*PS04" },
     { "Scope Fwd",      "*PS06" }
+#endif
 };
 
+#ifndef BLANK_MAIN_SCREEN
 static MarcduinoCommand PROGMEM sPanelCommands[] = {
     ///////////////////////////////////////////////
     // HARD CODED DO NOT CHANGE (title can change)
@@ -351,7 +381,7 @@ static MarcduinoCommand PROGMEM sScreamSoundCommands[] = {
 };
 
 static MarcduinoCommand PROGMEM sLeiaSoundCommands[] = {
-    { "Message (clean)",    "$71" },
+    { "Message clean",      "$71" },
     { "Help me!",           "$72" },
     { "Message",            "$73" },
     { "R2",                 "$74" },
@@ -372,7 +402,7 @@ static MarcduinoCommand PROGMEM sLeiaSoundCommands[] = {
     { "Destruct",           "$719" },
     { "Yoda Clear",         "$720" },
     { "Yoda Attack",        "$721" },
-    { "Yoda Nothing",       "$722" },
+    { "Yoda Nothing",       "$722" }
 };
 
 static MarcduinoCommand PROGMEM sMusicSoundCommands[] = {
@@ -399,11 +429,12 @@ static MarcduinoCommand PROGMEM sMusicSoundCommands[] = {
     { "Girl On Fire",      "$821" },
     { "Pacman",            "$822" },
 };
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 
 static void PopupKeyboardEdit(char* msg, unsigned len);
-static bool PlayMovie(const char* fileName, bool sensorTriggered = false);
+static bool PlayMovie(const char* fileName, const char* musicCmd, int musicDelay = 0, bool sensorTriggered = false);
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -455,9 +486,9 @@ public:
 
     virtual void render()
     {
-        uint8_t sel = currentSelection();
         GD.ColorRGB(0x000000);
-
+#ifndef BLANK_MAIN_SCREEN
+        uint8_t sel = currentSelection();
         GD.Begin(RECTS);
         GD.Vertex2ii(0, 0);
         GD.Vertex2ii(480, 272);
@@ -487,8 +518,10 @@ public:
         GD.Tag(kVideoScreenText);
         GD.ColorRGB((sel == kVideoScreenText) ? 0x0000FF : 0xFFFFFF);
         GD.cmd_text(85, 230, 31, OPT_CENTER, "Video");
+#endif
     }
 
+#ifndef BLANK_MAIN_SCREEN
     virtual void handleSelection(uint8_t selection)
     {
         switch (selection)
@@ -508,12 +541,16 @@ public:
             case kVideoScreenText:
             {
                 const char* movies[] = { "leia.avi", "plans1.avi", "plans2.avi" };
-                PlayMovie(movies[random(0,3)]);
+                const char* music[] = { "$71\r", "$83\r", "$82\r" };
+                int sel = random(0,3);
+                PlayMovie(movies[sel],music[sel],2);
                 break;
             }
         }
     }
+#endif
 protected:
+#ifndef BLANK_MAIN_SCREEN
     enum
     {
         kPanelScreenText = 100,
@@ -522,10 +559,12 @@ protected:
         kSoundScreenText = 103,
         kVideoScreenText = 104
     };
+#endif
 };
 
 ///////////////////////////////////////////////////////////////////////////////
 
+#ifndef BLANK_MAIN_SCREEN
 class PanelScreen : public CommandScreen
 {
 public:
@@ -922,9 +961,11 @@ protected:
         GD.RestoreContext();
     }
 };
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 
+#ifndef BLANK_MAIN_SCREEN
 class HoloScreen : public CommandScreen
 {
 public:
@@ -1140,9 +1181,11 @@ protected:
         GD.RestoreContext();
     }
 };
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 
+#ifndef BLANK_MAIN_SCREEN
 class LogicScreen : public CommandScreen
 {
 public:
@@ -1194,41 +1237,33 @@ public:
                 break;
             case kAllText:
                 fTextMask |= (kTopFLDText|kBottomFLDText|kRearLDText);
-                SendPartialMarcduinoCommand("@1M");
-                SendPartialMarcduinoCommand(fTopText);
-                SendPartialMarcduinoCommand("\r");
-                SendPartialMarcduinoCommand("@1M");
-                SendPartialMarcduinoCommand(fBotText);
-                SendPartialMarcduinoCommand("\r");
-                SendPartialMarcduinoCommand("@1M");
-                SendPartialMarcduinoCommand(fRearText);
-                SendPartialMarcduinoCommand("\r");
-                SendMarcduinoCommand("@0T100\r");
+                SendPartialMarcduinoCommand("@1M", fTopText);
+                SendPartialMarcduinoCommand("@2M", fBotText);
+                SendPartialMarcduinoCommand("@3M", fRearText);
+                //SendMarcduinoCommand("@0T100\r");
                 break;
             case kAuraBesh:
                 if ((fTextMask & kTopFLDText) != 0)
                     SendMarcduinoCommand("@1P61\r");
                 if ((fTextMask & kBottomFLDText) != 0)
-                    SendMarcduinoCommand("@1P61\r");
+                    SendMarcduinoCommand("@2P61\r");
                 if ((fTextMask & kRearLDText) != 0)
-                    SendMarcduinoCommand("@1P61\r");
+                    SendMarcduinoCommand("@3P61\r");
                 break;
             case kLatin:
                 if ((fTextMask & kTopFLDText) != 0)
                     SendMarcduinoCommand("@1P60\r");
                 if ((fTextMask & kBottomFLDText) != 0)
-                    SendMarcduinoCommand("@1P60\r");
+                    SendMarcduinoCommand("@2P60\r");
                 if ((fTextMask & kRearLDText) != 0)
-                    SendMarcduinoCommand("@1P60\r");
+                    SendMarcduinoCommand("@3P60\r");
                 break;
             case kTopFLD:
                 toggleMaskBit(fTextMask, kTopFLDText);
                 if ((fTextMask & kTopFLDText) != 0)
                 {
-                    SendPartialMarcduinoCommand("@1M");
-                    SendPartialMarcduinoCommand(fTopText);
-                    SendPartialMarcduinoCommand("\r");
-                    SendMarcduinoCommand("@1T100\r");
+                    SendPartialMarcduinoCommand("@1M", fTopText);
+                    //SendMarcduinoCommand("@1T100\r");
                 }
                 else
                 {
@@ -1239,10 +1274,8 @@ public:
                 toggleMaskBit(fTextMask, kBottomFLDText);
                 if ((fTextMask & kBottomFLDText) != 0)
                 {
-                    SendPartialMarcduinoCommand("@2M");
-                    SendPartialMarcduinoCommand(fBotText);
-                    SendPartialMarcduinoCommand("\r");
-                    SendMarcduinoCommand("@2T100\r");
+                    SendPartialMarcduinoCommand("@2M", fBotText);
+                    //SendMarcduinoCommand("@2T100\r");
                 }
                 else
                 {
@@ -1253,10 +1286,8 @@ public:
                 toggleMaskBit(fTextMask, kRearLDText);
                 if ((fTextMask & kRearLDText) != 0)
                 {
-                    SendPartialMarcduinoCommand("@3M");
-                    SendPartialMarcduinoCommand(fRearText);
-                    SendPartialMarcduinoCommand("\r");
-                    SendMarcduinoCommand("@3T100\r");
+                    SendPartialMarcduinoCommand("@3M", fRearText);
+                    //SendMarcduinoCommand("@3T100\r");
                 }
                 else
                 {
@@ -1384,9 +1415,11 @@ protected:
         GD.RestoreContext();
     }
 };
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 
+#ifndef BLANK_MAIN_SCREEN
 class SoundScreen : public CommandScreen
 {
 public:
@@ -1480,6 +1513,7 @@ protected:
     SelectionMenu fCatagories;
     VerticalVolumeControl fVolumeControl;
 };
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -1500,20 +1534,22 @@ public:
     {
         int res;
 
-    #ifdef CARD_SENSOR
         if (fSensorTriggered)
         {
             blankScreen();
             GD.Clear();
             GD.swap();
-            sendMarcduinoCommand(CARD_MUSIC_COMMAND); // music
-            delay(CARD_MUSIC_DELAY_MS);
             sendMarcduinoCommand(CARD_OPENPANEL_COMMAND); // open panel 5
-            delay(CARD_OPENPANEL_DELAY_MS);
-            sendMarcduinoCommand(CARD_STOPPANEL_COMMAND);
+            if (*fMusicCmd != '\0')
+            {
+                sendMarcduinoCommand(fMusicCmd); // music
+                if (fMusicDelay != 0)
+                    delay(fMusicDelay);
+            }
+            // delay(CARD_OPENPANEL_DELAY_MS);
+            // sendMarcduinoCommand(CARD_STOPPANEL_COMMAND);
             restoreScreen();
         }
-    #endif
 
         GD.cmd_mediafifo(fBase, fSize);
         GD.cmd_regwrite(REG_MEDIAFIFO_WRITE, fPtr);
@@ -1534,33 +1570,35 @@ public:
         if (res <= 0)
         {
             // video is over
-        #ifdef CARD_SENSOR
             if (fSensorTriggered)
             {
                 sendMarcduinoCommand(CARD_CLOSEPANEL_COMMAND);
                 delay(CARD_CLOSEPANEL_DELAY_MS);
                 sendMarcduinoCommand(CARD_STOPMUSIC_COMMAND);
             }
-        #endif
             switchToScreen(kMainScreen);
-        #ifdef CARD_SENSOR
             if (fSensorTriggered)
             {
                 blankScreen();
             }
-        #endif
         }
     }
 
-    bool playMovie(const char* fileName, ScreenID returnScreen, bool sensorTriggered)
+    bool playMovie(const char* fileName, const char* musicCmd, int musicDelay, ScreenID returnScreen, bool sensorTriggered)
     {
         bool found = false;
+        fMusicDelay = musicDelay;
+        strncpy(fMusicCmd, musicCmd, sizeof(fMusicCmd));
         fSensorTriggered = sensorTriggered;
         fReturnScreen = returnScreen;
         fSize = 0x40000UL;
         fBase = 0x100000UL - fSize;
         GD.__end();
         found = (fReader.openfile(fileName) != 0);
+        if (!found)
+        {
+            sendMarcduinoCommand("$41\r");
+        }
         GD.resume();
         if (found)
         {
@@ -1579,6 +1617,8 @@ private:
     uint32_t fSize;
     uint32_t fBase;
     uint32_t fPtr;
+    char fMusicCmd[8];
+    int fMusicDelay;
     bool fSensorTriggered;
     Reader fReader;
     static constexpr int SECTOR_SIZE = 512;
@@ -1606,7 +1646,7 @@ private:
                 stopPlaying = true;
             if (stopPlaying)
             {
-                GD.begin();
+                GD_INIT();
                 return -1;
             }
         }
@@ -1626,6 +1666,7 @@ private:
 
 ///////////////////////////////////////////////////////////////////////////////
 
+#ifndef BLANK_MAIN_SCREEN
 class KeyboardScreen : public CommandScreen
 {
 public:
@@ -1744,11 +1785,12 @@ static void PopupKeyboardEdit(char* msg, unsigned len)
         scr->editMessage(msg, len, CommandScreen::currentID());
     }
 }
+#endif
 
-static bool PlayMovie(const char* fileName, bool sensorTriggered)
+static bool PlayMovie(const char* fileName, const char* musicCmd, int musicDelay, bool sensorTriggered)
 {
     VideoScreen* scr = (VideoScreen*)CommandScreen::findScreen(kVideoScreen);
-    return (scr != NULL) ? scr->playMovie(fileName, CommandScreen::currentID(), sensorTriggered) : false;
+    return (scr != NULL) ? scr->playMovie(fileName, musicCmd, musicDelay, CommandScreen::currentID(), sensorTriggered) : false;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1757,34 +1799,193 @@ static bool PlayMovie(const char* fileName, bool sensorTriggered)
 SplashScreen sSplashScreen;
 #endif
 MainScreen sMainScreen;
+#ifndef BLANK_MAIN_SCREEN
 PanelScreen sPanelScreen;
 HoloScreen sHoloScreen;
 LogicScreen sLogicScreen;
 SoundScreen sSoundScreen;
-VideoScreen sVideoScreen;
 KeyboardScreen sKeyboardScreen;
+#endif
+VideoScreen sVideoScreen;
 
 ///////////////////////////////////////////////////////////////////////////////
 
 void setup()
 {
+#ifdef MARCDUINO_SERIAL
     MARCDUINO_SERIAL.begin(BAUD_RATE);
+#elif defined(ESP32)
+    Serial.begin(115200);
+#endif
+#ifdef XBEE_SOFT_SERIAL
+    XBee.begin(9600);
+#endif
 #ifdef MY_I2C_ADDRESS
     Wire.begin(MY_I2C_ADDRESS);
 #endif
-    GD.begin();
+#ifdef ESP32
+    bool sdCard = SD.begin(USE_SD_PIN);
+    if (sdCard)
+    {
+        bool exists;
+        Serial.println();
+        File dir, entry;
+        dir = SD.open("/");
+        for (;;)
+        {
+            entry = dir.openNextFile();
+            if (!entry)
+                break;
+            Serial.println(entry.name());
+            entry.close();
+        }
+        dir.close();
+        exists = SD.exists("/secret.txt");
+        if (exists)
+            Serial.println("FOUND FILE");
+        else
+            Serial.println("NO FILE");
+    }
+    else
+    {
+        Serial.println("NO SD CARD");
+    }
+#endif
+    GD_INIT();
+
+    Serial.println("Configuring access point...");
+
+#if 0//defined(ESP32)
+
+    Serial.print("Attempting to connect to SSID: ");
+    Serial.println(ssid);
+    WiFi.begin(ssid, password);
+
+    // attempt to connect to Wifi network:
+    while (WiFi.status() != WL_CONNECTED) {
+        Serial.print(".");
+        // wait 1 second for re-trying
+        delay(1000);
+    }
+
+    Serial.print("Connected to ");
+    Serial.println(ssid);
+    delay(500);
+    //client.setPreSharedKey(pskIdent, psKey);
+
+            if (!client.connect(server, port))
+                Serial.println("Connection failed!");
+            else
+                Serial.println("Connected to server!");
+#endif
+}
+
+byte buildCommand(char ch, char* output_str, size_t output_size)
+{
+    static uint8_t pos=0;
+    if (ch == '\r')
+    {
+        output_str[pos]='\0';
+        pos=0;
+        return true;
+    }
+    output_str[pos] = ch;
+    if (pos <= output_size-1)
+        pos++;
+    return false;
 }
 
 void loop()
 {
     CommandScreen::processLoop();
+#ifdef MARCDUINO_SERIAL
+    while (MARCDUINO_SERIAL.available())
+    {
+        static char sCmdString[64];
+        char ch = (char)MARCDUINO_SERIAL.read();  // get the new byte
+        if (buildCommand(ch, sCmdString, sizeof(sCmdString)))
+        {
+            char* s = sCmdString;
+            int len = strlen(s);
+            if (s[0] == '#' && s[1] == 'V' && s[2] == 'I' && s[3] == 'E' && s[4] == 'W')
+            {
+                s += 5;
+                len -= 4;
+                int musicDelay = 0;
+                if (s[0] == '#' && s[1] >= '0' && s[1] <= '9')
+                {
+                    musicDelay = (s[1] - '0') * 1000;
+                    s += 2;
+                    len -= 2;
+                }
+                char musicCmd[8];
+                musicCmd[0] = '\0';
+                char* movie = s;
+                while (*s != '\0' && *s != '$')
+                    s++;
+                if (*s == '$')
+                {
+                    strncpy(musicCmd, s, sizeof(musicCmd)-2);
+                    strcat(musicCmd, "\r");
+                    *s = '\0';
+                }
+                memmove(sCmdString, movie, len);
+                strcat(sCmdString, ".avi");
+                PlayMovie(sCmdString, musicCmd, musicDelay, true);
+            }
+            else
+            {
+                /* ignore */
+            }
+        }
+    #ifdef MARCDUINO_FORWARD
+        // Forward any characters received
+        MARCDUINO_SERIAL.write(ch);
+    #endif
+    }
+#endif
     // If we are not currently playing a video then check the optical sensor
 #ifdef CARD_SENSOR
     if (CommandScreen::currentID() != kVideoScreen &&
         CommandScreen::currentID() != kSplashScreen &&
         analogRead(CARD_SENSOR) <= CARD_SENSOR_THRESHOLD)
     {
-        PlayMovie(CARD_MOVIE, true);
+        PlayMovie(CARD_MOVIE, CARD_MUSIC_COMMAND, CARD_MUSIC_DELAY_MS, true);
+    }
+#endif
+#ifdef ESP32
+    static uint32_t lastHealthcheck;
+    if (lastHealthcheck + 200 < millis())
+    {
+        if (!client.connected())
+        {
+            if (WiFi.status() != WL_CONNECTED)
+            {
+                static uint32_t lastReconnect;
+                if (lastReconnect + 2000 < millis())
+                {
+                    Serial.print("Attempting to connect to SSID: ");
+                    Serial.println(ssid);
+                    WiFi.begin(ssid, password);
+                    lastReconnect = millis();
+                }
+            }
+            else
+            {
+                Serial.print("Connected to ");
+                Serial.println(ssid);
+
+                if (!client.connect(server, port))
+                    Serial.println("Connection failed!");
+                else
+                    Serial.println("Connected to server!");
+            }
+        }
+        else
+        {
+          client.write("\r", 1);
+        }
+        lastHealthcheck = millis();
     }
 #endif
 }
